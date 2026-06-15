@@ -4171,6 +4171,11 @@ class LlamaCppBackend:
 
                 # Library paths so llama-server finds its shared libs and CUDA DLLs.
                 env = child_env_without_native_path_secret()
+                # Omitting --threads relies on llama.cpp's physical-core default, so
+                # drop an inherited LLAMA_ARG_THREADS that would otherwise feed the
+                # arg handler and silently force hardware_concurrency(). #5692
+                if "--threads" not in cmd:
+                    env.pop("LLAMA_ARG_THREADS", None)
                 binary_dir = str(Path(binary).parent)
 
                 # AMD unified-memory APUs (gfx1150/gfx1151): let llama.cpp use
