@@ -378,6 +378,12 @@ class PrebuiltFallback(RuntimeError):
     pass
 
 
+class GpuOffloadFailure(PrebuiltFallback):
+    """An intended-GPU bundle served HTTP 200 but loaded the model fully on CPU.
+    Subclasses PrebuiltFallback so validate_prebuilt_attempts advances to the
+    next candidate (including the CPU last resort), not a source build."""
+
+
 class BusyInstallConflict(RuntimeError):
     pass
 
@@ -1365,6 +1371,14 @@ def direct_linux_release_plan(
         )
         if selection is not None:
             attempts.extend(selection.attempts)
+        # CPU prebuilt as a labelled last resort, so a CUDA bundle that fails the
+        # GPU-offload check lands on a working CPU binary instead of a source
+        # build. Only when a CUDA attempt exists, so a partial release (no CUDA)
+        # still walks back to an older release rather than shipping CPU here.
+        if attempts:
+            cpu_choice = published_asset_choice_for_kind(bundle, "linux-cpu")
+            if cpu_choice is not None:
+                attempts.append(cpu_choice)
     elif not host.has_rocm:
         # A ROCm-only host gets no CPU asset: leaving attempts empty lets the
         # raise below trigger a HIP source build instead of shipping a CPU
@@ -5564,6 +5578,99 @@ def validate_quantize(
         raise PrebuiltFallback(prefix + "llama-quantize validation failed:\n" + combined)
 
 
+# GPU-offload log classifier (mirrors classify_gpu_offload_lines in the Studio
+# backend; kept as a separate copy because this installer script must not import
+# the backend package). llama-server can serve HTTP 200 while running a model
+# fully on CPU when a GPU backend fails to init (#5807 / #5106 / #5830); detect
+# that so an intended-GPU bundle is rejected instead of silently accepted.
+_GPU_OFFLOAD_MARKERS = (
+    "CUDA", "ROCm", "ROCM", "HIP", "Metal", "Vulkan", "OpenCL", "SYCL", "MUSA", "CANN",
+)
+_OFFLOADED_LAYERS_RE = re.compile(
+    r"offloaded\s+(\d+)\s*/\s*\d+\s+layers?\s+to\s+gpu", re.IGNORECASE
+)
+_DEVICE_ROW_RE = re.compile(
+    r"-\s*(CUDA|ROCm|ROCM|HIP|Metal|Vulkan|SYCL|OpenCL|MUSA|CANN|CPU)\w*\s*:",
+    re.IGNORECASE,
+)
+_GPU_DEVICE_PREFIXES = (
+    "cuda", "rocm", "hip", "metal", "vulkan", "sycl", "opencl", "musa", "cann",
+)
+
+# Install kinds that ship GPU code (so validation launches with --n-gpu-layers).
+_GPU_INSTALL_KINDS = {
+    "linux-cuda",
+    "linux-arm64-cuda",
+    "linux-rocm",
+    "windows-cuda",
+    "windows-hip",
+    "windows-rocm",
+    "macos-arm64",
+}
+# Kinds whose CPU-only load is a fixable bad binary, so reject it (the resolver
+# then advances to the CPU prebuilt). macos-arm64 (Metal) is exempt: a CPU-only
+# load on a headless/virtualized Mac is an unfixable environment property, not a
+# bad bundle, and no better candidate exists.
+_GPU_OFFLOAD_REQUIRED_KINDS = _GPU_INSTALL_KINDS - {"macos-arm64"}
+
+
+def read_full_log(log_path: Path, *, max_chars: int = 1_000_000) -> str:
+    """Full startup log (capped); offload markers appear during model load, so
+    the 60-line read_log_excerpt tail can miss them."""
+    try:
+        return log_path.read_text(encoding = "utf-8", errors = "replace")[:max_chars]
+    except OSError:
+        return ""
+
+
+def server_log_shows_gpu_offload(log_text: str) -> "bool | None":
+    """True if the model landed on a GPU, False if it stayed on CPU despite GPU
+    intent, None when the log has no usable signal. Priority: explicit
+    offloaded-layer counts, then GPU model-buffer lines, then device_info rows."""
+    lines = log_text.splitlines()
+    # Counted offload wins: scan all (a draft model can log 0/k before the main
+    # model's 33/33) so any N>0 is True and an all-zero set is False.
+    saw_zero = False
+    for line in lines:
+        match = _OFFLOADED_LAYERS_RE.search(line)
+        if match:
+            if int(match.group(1)) > 0:
+                return True
+            saw_zero = True
+    if saw_zero:
+        return False
+
+    # GPU marker on a *model* buffer; _Host buffers are CPU-pinned, not offload.
+    saw_model_buffer = False
+    for line in lines:
+        if "model buffer size" not in line:
+            continue
+        saw_model_buffer = True
+        if "_Host" not in line and any(m in line for m in _GPU_OFFLOAD_MARKERS):
+            return True
+
+    # device_info: table; only rows after the header count (a compiled-in backend
+    # named in an earlier system_info line is not proof of offload).
+    after_header = False
+    saw_device_row = False
+    for line in lines:
+        if "device_info:" in line:
+            after_header = True
+            continue
+        if not after_header:
+            continue
+        match = _DEVICE_ROW_RE.search(line)
+        if not match:
+            continue
+        saw_device_row = True
+        if match.group(1).lower().startswith(_GPU_DEVICE_PREFIXES):
+            return True
+
+    if saw_model_buffer or saw_device_row:
+        return False
+    return None
+
+
 def validate_server(
     server_path: Path,
     probe_path: Path,
@@ -5602,17 +5709,8 @@ def validate_server(
         # validation. Use the resolved install_kind as the source of
         # truth and fall back to host detection when the caller did not
         # pass one (keeps backwards compatibility with older call sites).
-        _gpu_kinds = {
-            "linux-cuda",
-            "linux-arm64-cuda",
-            "linux-rocm",
-            "windows-cuda",
-            "windows-hip",
-            "windows-rocm",
-            "macos-arm64",
-        }
         if install_kind is not None:
-            _enable_gpu_layers = install_kind in _gpu_kinds
+            _enable_gpu_layers = install_kind in _GPU_INSTALL_KINDS
         else:
             # Older call sites that don't pass install_kind: keep ROCm
             # hosts in the GPU-validation path so an AMD-only Linux host
@@ -5642,6 +5740,7 @@ def validate_server(
                 startup_started = time.time()
                 response_body = ""
                 last_error: Exception | None = None
+                completion_ok = False
                 while time.time() < deadline:
                     if process.poll() is not None:
                         process.wait(timeout = 5)
@@ -5678,7 +5777,11 @@ def validate_server(
                             status_code = response.status
                             response_body = response.read().decode("utf-8", "replace")
                             if status_code == 200:
-                                return
+                                # Classify offload after the loop, outside this
+                                # try, so GpuOffloadFailure is not swallowed by
+                                # the except below.
+                                completion_ok = True
+                                break
                             last_error = RuntimeError(f"unexpected HTTP status {status_code}")
                     except urllib.error.HTTPError as exc:
                         response_body = exc.read().decode("utf-8", "replace")
@@ -5696,6 +5799,19 @@ def validate_server(
                         + output
                         + ("\n" + response_body if response_body else "")
                     )
+                if completion_ok:
+                    # Served 200. For an intended-GPU bundle, confirm the model
+                    # actually offloaded; a definite CPU-only load means the GPU
+                    # backend failed, so reject (a None/no-signal log passes).
+                    if install_kind in _GPU_OFFLOAD_REQUIRED_KINDS:
+                        log_handle.flush()
+                        if server_log_shows_gpu_offload(read_full_log(log_path)) is False:
+                            raise GpuOffloadFailure(
+                                "llama-server responded but loaded the model entirely "
+                                "on CPU despite GPU offload being requested:\n"
+                                + read_log_excerpt(log_path)
+                            )
+                    return
         finally:
             if process is not None and process.poll() is None:
                 process.terminate()
@@ -5949,6 +6065,14 @@ def _linux_published_attempts(host: HostInfo, bundle: PublishedReleaseBundle) ->
         )
         if selection is not None:
             attempts.extend(selection.attempts)
+        # CPU prebuilt as a labelled last resort, so a CUDA bundle that fails the
+        # GPU-offload check lands on a working CPU binary instead of a source
+        # build. Only when a CUDA attempt exists, so a partial release (no CUDA)
+        # still walks back to an older release rather than shipping CPU here.
+        if attempts:
+            cpu_choice = published_asset_choice_for_kind(bundle, "linux-cpu")
+            if cpu_choice is not None:
+                attempts.append(cpu_choice)
     elif host.has_rocm:
         # Use the fork's own per-gfx ROCm bundle (hash-approved, ships the full
         # ROCm runtime). Do NOT append the CPU asset for ROCm-only hosts: if no
@@ -6490,7 +6614,7 @@ def validate_prebuilt_attempts(
             if index == len(attempt_list) - 1:
                 raise attempt_error from exc
             log(
-                "selected CUDA bundle failed before activation; trying next prebuilt fallback "
+                "selected GPU prebuilt failed before activation; trying next prebuilt fallback "
                 f"({textwrap.shorten(str(attempt_error), width = 200, placeholder = '...')})"
             )
             continue
