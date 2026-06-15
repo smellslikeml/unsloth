@@ -82,7 +82,16 @@ logger = get_logger(__name__)
 # excluded), then the "device_info:" device table. Mirrors the copy in
 # install_llama_prebuilt.server_log_shows_gpu_offload.
 _GPU_OFFLOAD_MARKERS = (
-    "CUDA", "ROCm", "ROCM", "HIP", "Metal", "Vulkan", "OpenCL", "SYCL", "MUSA", "CANN",
+    "CUDA",
+    "ROCm",
+    "ROCM",
+    "HIP",
+    "Metal",
+    "Vulkan",
+    "OpenCL",
+    "SYCL",
+    "MUSA",
+    "CANN",
 )
 _OFFLOADED_LAYERS_RE = re.compile(
     r"offloaded\s+(\d+)\s*/\s*\d+\s+layers?\s+to\s+gpu", re.IGNORECASE
@@ -92,7 +101,15 @@ _DEVICE_ROW_RE = re.compile(
     re.IGNORECASE,
 )
 _GPU_DEVICE_PREFIXES = (
-    "cuda", "rocm", "hip", "metal", "vulkan", "sycl", "opencl", "musa", "cann",
+    "cuda",
+    "rocm",
+    "hip",
+    "metal",
+    "vulkan",
+    "sycl",
+    "opencl",
+    "musa",
+    "cann",
 )
 
 

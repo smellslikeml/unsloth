@@ -624,9 +624,7 @@ class TestClassifyGpuOffload:
     )
     def test_all_gpu_buffer_markers_return_true(self, marker):
         assert (
-            classify_gpu_offload_lines(
-                [f"load_tensors: {marker} model buffer size = 8000.0 MiB"]
-            )
+            classify_gpu_offload_lines([f"load_tensors: {marker} model buffer size = 8000.0 MiB"])
             is True
         )
 

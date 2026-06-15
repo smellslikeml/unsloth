@@ -5584,7 +5584,16 @@ def validate_quantize(
 # fully on CPU when a GPU backend fails to init (#5807 / #5106 / #5830); detect
 # that so an intended-GPU bundle is rejected instead of silently accepted.
 _GPU_OFFLOAD_MARKERS = (
-    "CUDA", "ROCm", "ROCM", "HIP", "Metal", "Vulkan", "OpenCL", "SYCL", "MUSA", "CANN",
+    "CUDA",
+    "ROCm",
+    "ROCM",
+    "HIP",
+    "Metal",
+    "Vulkan",
+    "OpenCL",
+    "SYCL",
+    "MUSA",
+    "CANN",
 )
 _OFFLOADED_LAYERS_RE = re.compile(
     r"offloaded\s+(\d+)\s*/\s*\d+\s+layers?\s+to\s+gpu", re.IGNORECASE
@@ -5594,7 +5603,15 @@ _DEVICE_ROW_RE = re.compile(
     re.IGNORECASE,
 )
 _GPU_DEVICE_PREFIXES = (
-    "cuda", "rocm", "hip", "metal", "vulkan", "sycl", "opencl", "musa", "cann",
+    "cuda",
+    "rocm",
+    "hip",
+    "metal",
+    "vulkan",
+    "sycl",
+    "opencl",
+    "musa",
+    "cann",
 )
 
 # Install kinds that ship GPU code (so validation launches with --n-gpu-layers).

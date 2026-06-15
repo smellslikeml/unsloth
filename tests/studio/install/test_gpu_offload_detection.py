@@ -31,6 +31,7 @@ _GPU_OFFLOAD_REQUIRED_KINDS = MOD._GPU_OFFLOAD_REQUIRED_KINDS
 
 # ── classifier ──────────────────────────────────────────────────────────
 
+
 def test_offloaded_count_positive_true():
     assert server_log_shows_gpu_offload("offloaded 33/33 layers to GPU") is True
 
@@ -77,11 +78,12 @@ def test_no_signal_none():
 
 # ── validate_server offload gate ────────────────────────────────────────
 
+
 class _FakeProc:
     def poll(self):
         return None  # alive, so the HTTP probe runs
 
-    def wait(self, timeout=None):
+    def wait(self, timeout = None):
         return 0
 
     def terminate(self):
@@ -116,7 +118,7 @@ def _run_validate_server(monkeypatch, log_text, install_kind):
         Path("/fake/probe.gguf"),
         types.SimpleNamespace(),
         Path("/fake/install"),
-        install_kind=install_kind,
+        install_kind = install_kind,
     )
 
 
@@ -146,6 +148,7 @@ def test_macos_metal_exempt_from_rejection(monkeypatch):
 
 # ── advance-to-CPU-prebuilt (no source build) ───────────────────────────
 
+
 def test_gpu_offload_failure_is_prebuilt_fallback():
     # Subclassing is what lets validate_prebuilt_attempts catch and advance.
     assert issubclass(GpuOffloadFailure, PrebuiltFallback)
@@ -153,10 +156,10 @@ def test_gpu_offload_failure_is_prebuilt_fallback():
 
 def test_attempt_loop_advances_from_offload_failure_to_cpu(monkeypatch, tmp_path):
     cuda = types.SimpleNamespace(
-        name="cuda.zip", install_kind="linux-cuda", runtime_line="cuda12", coverage_class="x"
+        name = "cuda.zip", install_kind = "linux-cuda", runtime_line = "cuda12", coverage_class = "x"
     )
     cpu = types.SimpleNamespace(
-        name="cpu.zip", install_kind="linux-cpu", runtime_line=None, coverage_class="x"
+        name = "cpu.zip", install_kind = "linux-cpu", runtime_line = None, coverage_class = "x"
     )
 
     def fake_validate_choice(attempt, *a, **k):
@@ -175,10 +178,10 @@ def test_attempt_loop_advances_from_offload_failure_to_cpu(monkeypatch, tmp_path
         tmp_path,
         tmp_path,
         Path("/fake/probe.gguf"),
-        requested_tag="t",
-        llama_tag="t",
-        release_tag="t",
-        approved_checksums=None,
+        requested_tag = "t",
+        llama_tag = "t",
+        release_tag = "t",
+        approved_checksums = None,
     )
     assert chosen.install_kind == "linux-cpu"
     assert tried_fallback is True
@@ -186,22 +189,26 @@ def test_attempt_loop_advances_from_offload_failure_to_cpu(monkeypatch, tmp_path
 
 # ── resolver keeps the CPU prebuilt as a labelled last resort ────────────
 
+
 def test_linux_nvidia_plan_appends_cpu_last_resort(monkeypatch):
-    cuda = types.SimpleNamespace(install_kind="linux-cuda", name="cuda.zip")
-    cpu = types.SimpleNamespace(install_kind="linux-cpu", name="cpu.zip")
-    host = types.SimpleNamespace(has_usable_nvidia=True, has_rocm=False)
+    cuda = types.SimpleNamespace(install_kind = "linux-cuda", name = "cuda.zip")
+    cpu = types.SimpleNamespace(install_kind = "linux-cpu", name = "cpu.zip")
+    host = types.SimpleNamespace(has_usable_nvidia = True, has_rocm = False)
     bundle = types.SimpleNamespace()
 
     monkeypatch.setattr(
-        MOD, "detect_torch_cuda_runtime_preference",
-        lambda h: types.SimpleNamespace(runtime_line="cuda12", selection_log=""),
+        MOD,
+        "detect_torch_cuda_runtime_preference",
+        lambda h: types.SimpleNamespace(runtime_line = "cuda12", selection_log = ""),
     )
     monkeypatch.setattr(
-        MOD, "linux_cuda_choice_from_release",
-        lambda *a, **k: types.SimpleNamespace(attempts=[cuda]),
+        MOD,
+        "linux_cuda_choice_from_release",
+        lambda *a, **k: types.SimpleNamespace(attempts = [cuda]),
     )
     monkeypatch.setattr(
-        MOD, "published_asset_choice_for_kind",
+        MOD,
+        "published_asset_choice_for_kind",
         lambda b, kind: cpu if kind == "linux-cpu" else None,
     )
 
