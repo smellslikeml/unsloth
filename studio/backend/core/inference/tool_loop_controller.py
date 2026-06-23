@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Mapping, Sequence
 from urllib.parse import urlparse
 
+from core.inference.silent_failure_detector import is_silent_failure
 from core.inference.tool_call_parser import TOOL_ERROR_NUDGE, TOOL_ERROR_PREFIXES
 
 
@@ -230,7 +231,15 @@ def status_for_tool(tool_name: str, arguments: Mapping[str, Any]) -> str:
 
 
 def is_tool_error(result: str) -> bool:
-    return isinstance(result, str) and result.lstrip().startswith(TOOL_ERROR_PREFIXES)
+    if not isinstance(result, str):
+        return False
+    # Loud failures announce themselves at the front of the string.
+    if result.lstrip().startswith(TOOL_ERROR_PREFIXES):
+        return True
+    # Silent failures (error swallowing/dilution) bury the signal mid-string;
+    # catching them here keeps a swallowed error from being cached as a
+    # successful call and narrated over on the next turn.
+    return is_silent_failure(result)
 
 
 def strip_result_for_model(result: str) -> str:
