@@ -1046,7 +1046,7 @@ def _opt_int(v) -> int | None:
 def _scope_retrieval_kwargs(scope: dict) -> dict:
     """Retrieval mode from rag_scope; candidate pools and RRF come from config."""
     mode = scope.get("mode")
-    return {"mode": mode if mode in ("hybrid", "dense", "lexical") else "hybrid"}
+    return {"mode": mode if mode in ("hybrid", "dense", "lexical", "fusion") else "hybrid"}
 
 
 def _search_knowledge_base(arguments: dict, rag_scope: dict | None) -> str:

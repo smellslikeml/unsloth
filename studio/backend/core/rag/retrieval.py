@@ -76,14 +76,20 @@ def retrieve_hybrid(
     model_name: str | None = None,
     mode: str = "hybrid",
 ) -> list[Hit]:
-    """``mode`` picks the backend: lexical-only, dense-only, or RRF of both
-    (default). Pool sizes and the RRF constant come from config."""
+    """``mode`` picks the backend: lexical-only, dense-only, RRF of both
+    (``hybrid``, default), or RAG-Fusion over multiple query variants
+    (``fusion``). Pool sizes and the RRF constant come from config."""
     k = k if k is not None else config.TOP_K_HYBRID
     k = int(k)  # tool-call / scope top_k may arrive as a float; LIMIT + slice need int
     if mode == "lexical":
         return retrieve_lexical(conn, scope, query, k)
     if mode == "dense":
         return retrieve_dense(conn, scope, query, k, model_name = model_name)
+    if mode == "fusion":
+        # RAG-Fusion: fan _rrf over multiple generated query variants, not just
+        # the lexical/dense pair. Imported lazily to avoid an import cycle.
+        from .query_fusion import retrieve_fusion
+        return retrieve_fusion(conn, scope, query, k = k, model_name = model_name)
     lexical = retrieve_lexical(conn, scope, query, config.TOP_K_LEXICAL)
     dense = retrieve_dense(conn, scope, query, config.TOP_K_DENSE, model_name = model_name)
     return _rrf([lexical, dense], config.RRF_K, k)
