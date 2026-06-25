@@ -248,6 +248,8 @@ $env:UNSLOTH_STUDIO_HOME='C:\path'; irm https://unsloth.ai/install.ps1 | iex
 
 Cap Studio's native CPU thread pools on high-core hosts: `UNSLOTH_CPU_THREADS=8 unsloth studio -p 8888`.
 
+Tune RAG-Fusion query expansion (Studio retrieval `mode="fusion"`): `RAG_FUSION_MAX_VARIANTS` sets how many query variants a single query is expanded into before RRF fuses their rankings (default `4`; `1` collapses fusion back to a single query). For example: `RAG_FUSION_MAX_VARIANTS=6 unsloth studio -p 8888`.
+
 #### Uninstall
 The recommended way to fully remove Unsloth Studio is the matching uninstall script for your OS. It stops any running servers, removes the install dir, the launcher data dir, the desktop shortcut, and any platform-specific entries (macOS `.app` bundle + Launch Services on Mac; Start Menu, `HKCU\Software\Unsloth` registry key and user `PATH` entries on Windows):
 
