@@ -137,13 +137,27 @@ def run(args):
         packing = args.packing,
     )
 
+    # Optionally precondition the LoRA gradient with a Riemannian r×r metric
+    # (https://arxiv.org/abs/2402.02347). When enabled this overrides --optim.
+    from lora_preconditioner import build_lora_optimizers
+
+    optimizers = build_lora_optimizers(
+        model,
+        enabled = args.use_riemannian,
+        learning_rate = args.learning_rate,
+        weight_decay = args.weight_decay,
+    )
+
     # Initialize trainer
-    trainer = SFTTrainer(
+    trainer_kwargs = dict(
         model = model,
         processing_class = tokenizer,
         train_dataset = dataset,
         args = training_args,
     )
+    if optimizers is not None:
+        trainer_kwargs["optimizers"] = optimizers
+    trainer = SFTTrainer(**trainer_kwargs)
 
     trainer.train()
 
@@ -270,6 +284,15 @@ if __name__ == "__main__":
         type = str,
         default = None,
         help = "Configuration for LoftQ",
+    )
+    lora_group.add_argument(
+        "--use_riemannian",
+        action = "store_true",
+        help = (
+            "Precondition LoRA gradients with a Riemannian r×r metric "
+            "(arxiv.org/abs/2402.02347). Overrides --optim with a "
+            "preconditioned AdamW for faster, more stable LoRA training."
+        ),
     )
 
     training_group = parser.add_argument_group("🎓 Training Options")
