@@ -9,6 +9,17 @@ Paper: "Riemannian Preconditioned LoRA for Fine-Tuning Foundation Models"
 The pure pair-detection / opt-in gating tests run without torch. The
 optimizer-math test is gated on a torch install (skips on the no-torch
 sandbox, like the rest of the GPU suite).
+
+Follows the same no-GPU / no-unsloth_zoo helper-extraction idiom as
+``tests/saving/test_is_gpt_oss_detection.py``: that test pulls the target
+helper out of core unsloth code via ``ast`` because importing the module
+would drag in torch. Here ``lora_preconditioner.py`` is already a torch-free,
+directly importable module (``import lora_preconditioner``), so a plain
+import substitutes for the ``ast``-extraction step while keeping the rest of
+the idiom — the wiring is pinned by source assertion, and the
+``--use_riemannian`` wiring strings are absent on ``main`` and present here
+(see ``test_callsite_wires_the_preconditioner_into_unsloth_cli``), so that
+case fails on ``main`` and passes with this change.
 """
 
 from __future__ import annotations
@@ -71,7 +82,13 @@ def test_callsite_wires_the_preconditioner_into_unsloth_cli():
     """The integration proof: the training CLI must actually invoke the
     builder and forward its result to SFTTrainer. unsloth-cli.py imports torch
     at call time so it cannot be imported here; assert the wiring at source
-    level instead."""
+    level instead.
+
+    Fails on ``main`` / passes with this change: none of these wiring strings
+    (the ``build_lora_optimizers`` import, the ``enabled = args.use_riemannian``
+    gate, the ``optimizers`` forwarding, and the ``--use_riemannian`` flag)
+    exist before this PR, so this test fails on ``main`` and only passes once
+    the change is applied."""
     source = (REPO_ROOT / "unsloth-cli.py").read_text()
     assert "from lora_preconditioner import build_lora_optimizers" in source
     assert "build_lora_optimizers(" in source
