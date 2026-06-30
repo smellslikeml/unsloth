@@ -5804,6 +5804,7 @@ class LlamaCppBackend:
           {"type": "content", "text": "token"}            -- streamed content tokens (cumulative)
           {"type": "reasoning", "text": "token"}          -- streamed reasoning tokens (cumulative)
         """
+        from core.inference.correction_rules import compile_corrections
         from core.inference.tools import build_rag_autoinject, execute_tool
 
         if not self.is_loaded:
@@ -6544,6 +6545,13 @@ class LlamaCppBackend:
                             abort_tool_decision(decision_slot, approval_id)
 
                     _effective_timeout = None if tool_call_timeout >= 9999 else tool_call_timeout
+                    # TRACE: compile the user's standing corrections from chat
+                    # history into deny-rules, enforced at the same gate as the
+                    # command blocklist. Bypass Permissions skips the gate, like
+                    # it skips the static blocklist.
+                    _correction_rules = (
+                        None if bypass_permissions else compile_corrections(conversation)
+                    )
                     # RAG: cap paraphrased KB re-searches that slip past the dup guard.
                     if (
                         decision.tool_name == "search_knowledge_base"
@@ -6559,6 +6567,7 @@ class LlamaCppBackend:
                             session_id = session_id,
                             rag_scope = rag_scope,
                             disable_sandbox = bypass_permissions,
+                            correction_rules = _correction_rules,
                         )
                         if decision.tool_name == "search_knowledge_base":
                             _kb_search_count += 1

@@ -22,6 +22,7 @@ import tempfile
 import threading
 import urllib.request
 
+from core.inference.correction_rules import check_correction_rules
 from core.inference.mcp_client import (
     MCP_TOOL_PREFIX,
     TOOL_CACHE_INVALIDATING_FIELDS,
@@ -973,6 +974,7 @@ def execute_tool(
     session_id: str | None = None,
     rag_scope: dict | None = None,
     disable_sandbox: bool = False,
+    correction_rules: list | None = None,
 ) -> str:
     """Execute a tool by name with the given arguments; returns a string.
 
@@ -983,6 +985,8 @@ def execute_tool(
     ``disable_sandbox``: Bypass Permissions; run python/terminal without the
     safety checks, blocklist, or resource caps (secrets still stripped). Only
     affects local code tools; web_search / MCP are unchanged.
+    ``correction_rules``: user-compiled deny-rules (TRACE) enforced at the same
+    gate as the command blocklist when the sandbox is active.
     """
     logger.info(f"execute_tool: name={name}, session_id={session_id}, timeout={timeout}")
     effective_timeout = _EXEC_TIMEOUT if timeout is _TIMEOUT_UNSET else timeout
@@ -1024,6 +1028,7 @@ def execute_tool(
             effective_timeout,
             session_id,
             disable_sandbox = disable_sandbox,
+            correction_rules = correction_rules,
         )
     if name == "terminal":
         return _bash_exec(
@@ -1032,6 +1037,7 @@ def execute_tool(
             effective_timeout,
             session_id,
             disable_sandbox = disable_sandbox,
+            correction_rules = correction_rules,
         )
     return f"Unknown tool: {name}"
 
@@ -2508,6 +2514,7 @@ def _python_exec(
     timeout: int = _EXEC_TIMEOUT,
     session_id: str | None = None,
     disable_sandbox: bool = False,
+    correction_rules: list | None = None,
 ) -> str:
     """Execute Python code in a subprocess sandbox.
 
@@ -2522,6 +2529,9 @@ def _python_exec(
         error = _check_code_safety(code)
         if error:
             return error
+        correction_block = check_correction_rules("python", {"code": code}, correction_rules)
+        if correction_block:
+            return correction_block
     elif not _harden_parent_against_proc_env_leak():
         # Close the /proc/<parent>/environ secret-recovery path first; if it
         # cannot be applied, fail closed rather than leak the parent environ.
@@ -2625,6 +2635,7 @@ def _bash_exec(
     timeout: int = _EXEC_TIMEOUT,
     session_id: str | None = None,
     disable_sandbox: bool = False,
+    correction_rules: list | None = None,
 ) -> str:
     """Execute a bash command in a subprocess sandbox.
 
@@ -2639,6 +2650,11 @@ def _bash_exec(
         blocked = _find_blocked_commands(command)
         if blocked:
             return f"Blocked command(s) for safety: {', '.join(sorted(blocked))}"
+        correction_block = check_correction_rules(
+            "terminal", {"command": command}, correction_rules
+        )
+        if correction_block:
+            return correction_block
     elif not _harden_parent_against_proc_env_leak():
         # Close the /proc/<parent>/environ secret-recovery path first; if it
         # cannot be applied, fail closed rather than leak the parent environ.
