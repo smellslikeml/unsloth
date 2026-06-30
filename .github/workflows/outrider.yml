@@ -70,6 +70,23 @@ jobs:
           if [ -n "$MODEL_INPUT" ]; then
             echo "ANTHROPIC_MODEL=$MODEL_INPUT" >> "$GITHUB_ENV"
           fi
+      # REMYX-165: install cocoindex-code AST-based semantic code search
+      # as a Claude Code skill. Tests whether AST-targeted lookups
+      # reduce the implementation chain's file-reading cost (and the
+      # in-place style churn that comes with reading too much of a file)
+      # vs the substring-grep + Read fallback. Compare diff size +
+      # token cost against PR #8 (same paper, same provider, no skill).
+      - name: Install cocoindex-code as Claude Code skill
+        run: |
+          python -m pip install --upgrade pip pipx
+          pipx ensurepath || true
+          pipx install 'cocoindex-code[full]'
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # Verify the ccc CLI is on PATH for the Outrider action's
+          # subprocess; the .claude-plugin/ manifest in the installed
+          # package is what Claude Code discovers at agent startup.
+          which ccc || true
+          ccc --version || true
       - uses: remyxai/outrider@v1
         with:
           interest-id: 1ffa027a-8fb0-47a6-9eee-ef4b81a5cedb
