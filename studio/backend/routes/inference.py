@@ -3885,7 +3885,11 @@ async def openai_chat_completions(
         use_tools = (_tools_on or _mcp_allowed) and llama_backend.supports_tools
 
         if use_tools:
-            from core.inference.tools import ALL_TOOLS, get_enabled_mcp_tools
+            from core.inference.tools import (
+                ALL_TOOLS,
+                get_enabled_mcp_tools,
+                get_intention_selected_mcp_tools,
+            )
 
             if not _tools_on:
                 # MCP-only request: skip built-ins, leave room for MCP tools.
@@ -3904,7 +3908,11 @@ async def openai_chat_completions(
                 ]
 
             if _mcp_allowed:
-                tools_to_use = tools_to_use + await get_enabled_mcp_tools()
+                # SING-style intention selection: narrow the full MCP library to
+                # the tools relevant to this turn (no-op when small / unreadable).
+                tools_to_use = tools_to_use + await get_intention_selected_mcp_tools(
+                    payload.messages
+                )
 
             # Skip the tool loop when no tool survived, so the safetensors
             # loop's "empty = allow all" semantic can't reach built-in tools
@@ -4439,7 +4447,11 @@ async def openai_chat_completions(
     )
 
     if _sf_use_tools:
-        from core.inference.tools import ALL_TOOLS, get_enabled_mcp_tools
+        from core.inference.tools import (
+            ALL_TOOLS,
+            get_enabled_mcp_tools,
+            get_intention_selected_mcp_tools,
+        )
 
         if not _sf_tools_on:
             _sf_tools_to_use = []
@@ -4457,7 +4469,11 @@ async def openai_chat_completions(
             ]
 
         if _sf_mcp_allowed:
-            _sf_tools_to_use = _sf_tools_to_use + await get_enabled_mcp_tools()
+            # SING-style intention selection: narrow the full MCP library to
+            # the tools relevant to this turn (no-op when small / unreadable).
+            _sf_tools_to_use = _sf_tools_to_use + await get_intention_selected_mcp_tools(
+                payload.messages
+            )
 
         # Mirror the GGUF path: refuse to enter the tool loop when nothing
         # survived, so a model-emitted built-in call can't piggy-back on the

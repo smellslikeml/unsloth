@@ -943,6 +943,32 @@ async def get_enabled_mcp_tools() -> list[dict]:
     return specs
 
 
+async def get_intention_selected_mcp_tools(
+    messages: list,
+    *,
+    max_tools: int | None = None,
+) -> list[dict]:
+    """Discover MCP tools, then narrow them to the turn's intention.
+
+    Wraps :func:`get_enabled_mcp_tools` with SING-style intention-aware
+    selection (see ``core.inference.intention_tool_selection``): the full
+    discovered library is filtered to the tools relevant to the latest user
+    message, returning the same ``list[dict]`` spec shape downstream. A safe
+    no-op when the library is small or no intention is detectable.
+    """
+    from core.inference.intention_tool_selection import (
+        latest_user_text,
+        select_mcp_tools_for_intention,
+    )
+
+    specs = await get_enabled_mcp_tools()
+    if not specs:
+        return specs
+    return select_mcp_tools_for_intention(
+        latest_user_text(messages), specs, max_tools = max_tools
+    )
+
+
 _TIMEOUT_UNSET = object()
 
 
