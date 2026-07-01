@@ -85,8 +85,7 @@ jobs:
           # Verify the ccc CLI is on PATH for the Outrider action's
           # subprocess; the .claude-plugin/ manifest in the installed
           # package is what Claude Code discovers at agent startup.
-          which ccc || true
-          ccc --version || true
+          which ccc
       - uses: remyxai/outrider@v1
         with:
           interest-id: 1ffa027a-8fb0-47a6-9eee-ef4b81a5cedb
