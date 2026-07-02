@@ -11,6 +11,7 @@ __all__ = [
     "embeddings",
     "store",
     "retrieval",
+    "query_fusion",
     "tool",
     "ingestion",
 ]

@@ -16,6 +16,9 @@ TOP_K_LEXICAL = int(os.environ.get("RAG_TOP_K_LEXICAL", "30"))
 TOP_K_DENSE = int(os.environ.get("RAG_TOP_K_DENSE", "30"))
 TOP_K_HYBRID = int(os.environ.get("RAG_TOP_K_HYBRID", "10"))
 RRF_K = int(os.environ.get("RAG_RRF_K", "60"))
+# RAG-Fusion (mode="fusion"): max query variants to expand a single query into
+# before fanning RRF over their rankings. 1 collapses fusion back to one query.
+FUSION_MAX_VARIANTS = int(os.environ.get("RAG_FUSION_MAX_VARIANTS", "4"))
 
 UPLOAD_EXTS = {".pdf", ".txt", ".md", ".markdown", ".docx", ".html", ".htm"}
 
