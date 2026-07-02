@@ -17,10 +17,15 @@ from unsloth_cli._inference import (
     stream_markdown,
     visible_text,
 )
+from unsloth_cli.session_memory import (
+    compact_messages,
+    extract_session_graph,
+    render_resume_block,
+)
 
 _HELP = (
     "Commands: /exit (quit), /reset (clear history), "
-    "/think (toggle reasoning), /compare (base vs tuned), /help"
+    "/think (toggle reasoning), /compare (base vs tuned), /memory (resume block), /help"
 )
 
 
@@ -172,6 +177,12 @@ def chat(
         "--no-server",
         help = "Load the model in-process even if a Studio server is running.",
     ),
+    memory_budget: int = typer.Option(
+        0,
+        "--memory-budget",
+        help = "Compress older turns into a structured resume block once the "
+        "history exceeds this many tokens (0 disables). Use /memory to preview.",
+    ),
 ):
     """Start an interactive chat with a model (loads once, stays warm)."""
     if not verbose:
@@ -245,8 +256,11 @@ def chat(
 
     def generate(backend = None, use_adapter = None):
         # Reads messages and show_thinking live, so /reset and /think apply.
+        # With a memory budget set, older turns are folded into a compact
+        # structured resume block so long sessions stay under the context window.
+        outgoing = compact_messages(messages, max_tokens = memory_budget)
         return (backend or chat_backend).stream(
-            messages,
+            outgoing,
             system_prompt = system_prompt,
             temperature = temperature,
             top_p = top_p,
@@ -295,6 +309,10 @@ def chat(
                 compare_mode = not compare_mode
                 state = "on" if compare_mode else "off"
                 console.print(f"(compare {state})", style = "bright_black")
+                continue
+            if user == "/memory":
+                block = render_resume_block(extract_session_graph(messages))
+                console.print(block or "(no structured memory yet)", style = "bright_black", markup = False)
                 continue
             if user in ("/help", "/?"):
                 console.print(_HELP, style = "bright_black")
